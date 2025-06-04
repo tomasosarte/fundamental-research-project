@@ -4,3 +4,5 @@
 # Temporary files/folders
 __pycache__/
 
+# Ignore datasets
+data/
