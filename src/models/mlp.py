@@ -1,30 +1,21 @@
 import torch as th
 
-# Is cuda available and move model to cuda if it is
-if th.cuda.is_available():
+class MLP(th.nn.Module):
 
-    # Print the GPU name
-    gpu_name = th.cuda.get_device_name(0)
-    print(f"Using GPU: {gpu_name}")
+    def __init__(self, input_size=784, hidden_sizes=[256, 128, 64], output_size=10):
+        
+        super(MLP, self).__init__()
+        layers = []
+        in_size = input_size
+        
+        for hidden_size in hidden_sizes:
+            layers.append(th.nn.Linear(in_size, hidden_size))
+            layers.append(th.nn.ReLU())
+            in_size = hidden_size
+        
+        layers.append(th.nn.Linear(in_size, output_size))
+        
+        self.model = th.nn.Sequential(*layers)
 
-else:
-
-    print("CUDA is not available. Using CPU.")
-    device = th.device("cpu")
-
-model = th.nn.Sequential(
-    th.nn.Linear(784, 256),
-    th.nn.ReLU(),
-    th.nn.Linear(256, 128),
-    th.nn.ReLU(),
-    th.nn.Linear(128, 64),
-    th.nn.ReLU(),
-    th.nn.Linear(64, 10),
-    th.nn.Softmax(dim=1)
-)
-
-# Example network usage
-input = th.randn(1, 784)
-output = model(input)
-print("Model output:")
-print(output)
+    def forward(self, x: th.Tensor):
+        return self.model(x.view(x.size(0), -1))
