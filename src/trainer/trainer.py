@@ -1,85 +1,124 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
+from tqdm import tqdm
+
 class Trainer:
 
     def __init__(self,
-        model: torch.nn.Module,
-        optimizer: torch.optim.Optimizer = None,
-        criterion: torch.nn.Module = torch.nn.CrossEntropyLoss(),
+        models: dict[str, torch.nn.Module],
+        optimizers: list[torch.optim.Optimizer],
+        criterions: list[torch.nn.Module],
+        schedulers: list[torch.optim.lr_scheduler._LRScheduler],
+        log_dir: str = "logs"
         ):
-        
-        self.model = model
-        self.criterion = criterion
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=0.001) if optimizer is None else optimizer
+
+        self.models = models
+        self.criterions = criterions
+        self.optimizers = optimizers
+        self.schedulers = schedulers
+        self.writers = [
+            SummaryWriter(log_dir=f"{log_dir}/{model_name}")
+            for model_name in models.keys()
+        ]
+
+        # Device setup
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.writer = SummaryWriter(log_dir=f"logs/{model.__class__.__name__}")
+        print(f"Using device: {self.device}")
+        if self.device.type == 'cuda':
+            print(f"Current GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}")
         
     def train(self, 
-        num_epocs: int= 350,
+        num_epochs: int = 350,
         train_loader: torch.utils.data.DataLoader = None,
         val_loader: torch.utils.data.DataLoader = None,
-        scheduler: torch.optim.lr_scheduler._LRScheduler = None,
-        ):
-        
-        for epoch in range(num_epocs):
+        ) -> None:
 
-            self.model.train()
-            total_loss, correct, total = 0, 0, 0
+        i = 0
+        for model_name, model in self.models.items():
+            print(f"Training model : {model_name}")
 
+            epoch_bar = tqdm(range(num_epochs), desc="Training Epochs")
 
-            for inputs, targets in train_loader:
+            for epoch in epoch_bar:
 
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                self.optimizer.zero_grad()
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.item() * inputs.size(0)
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
+                model.to(self.device)
+                total_loss, correct, total = 0, 0, 0
 
+                for inputs, targets in train_loader:
 
-            train_acc = correct / total
-            self.writer.add_scalar('Train/Loss', total_loss / total, epoch)
-            self.writer.add_scalar('Train/Accuracy', train_acc, epoch)
-
-            self.model.eval()
-
-            val_loss, val_correct, val_total = 0, 0, 0
-            with torch.no_grad():
-                for inputs, targets in val_loader:
                     inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    outputs = self.model(inputs)
-                    loss = self.criterion(outputs, targets)
-                    val_loss += loss.item() * inputs.size(0)
+                    self.optimizers[i].zero_grad()
+                    outputs = model(inputs)
+                    loss = self.criterions[i](outputs, targets)
+                    loss.backward()
+                    self.optimizers[i].step()
+                    total_loss += loss.item() * inputs.size(0)
                     _, predicted = outputs.max(1)
-                    val_total += targets.size(0)
-                    val_correct += predicted.eq(targets).sum().item()
-            val_acc = val_correct / val_total
-            self.writer.add_scalar('Val/Loss', val_loss / val_total, epoch)
-            self.writer.add_scalar('Val/Accuracy', val_acc, epoch)
+                    total += targets.size(0)
+                    correct += predicted.eq(targets).sum().item()
 
-            scheduler.step()
-            print(f"Epoch {epoch+1}: Train Acc = {train_acc:.4f}, Val Acc = {val_acc:.4f}")
+
+                train_acc = correct / total
+                train_loss = total_loss / total
+                self.writers[i].add_scalar('Train/Loss', train_loss, epoch)
+                self.writers[i].add_scalar('Train/Accuracy', train_acc, epoch)
+
+                model.eval()
+
+                val_loss, val_correct, val_total = 0, 0, 0
+                with torch.no_grad():
+                    for inputs, targets in val_loader:
+                        inputs, targets = inputs.to(self.device), targets.to(self.device)
+                        outputs = model(inputs)
+                        loss = self.criterions[i](outputs, targets)
+                        val_loss += loss.item() * inputs.size(0)
+                        _, predicted = outputs.max(1)
+                        val_total += targets.size(0)
+                        val_correct += predicted.eq(targets).sum().item()
+                val_acc = val_correct / val_total
+                val_loss = val_loss / val_total
+                self.writers[i].add_scalar('Val/Loss', val_loss / val_total, epoch)
+                self.writers[i].add_scalar('Val/Accuracy', val_acc, epoch)
+
+                self.schedulers[i].step()
+                epoch_bar.set_postfix({
+                    "Train Acc": f"{train_acc:.4f}",
+                    "Val Acc": f"{val_acc:.4f}",
+                    "Train Loss": f"{train_loss:.4f}",
+                    "Val Loss": f"{val_loss:.4f}"
+                })
+
+            # Clean gpu if using it:
+            if self.device ==  "cuda":
+                torch.cuda.empty_cache()
+            i += 1
 
     def evaluate(
             self,
             test_loader: torch.utils.data.DataLoader,
-        ):
-    
-        self.model.eval()
-        correct, total = 0, 0
-        with torch.no_grad():
-            for inputs, targets in test_loader:
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                outputs = self.model(inputs)
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
-        test_acc = correct / total
-        self.writer.add_scalar('Test/Accuracy', test_acc)
-        self.writer.close()
-        print(f"\n Final Test Accuracy: {test_acc:.4f}")
+        ) -> dict[str, float]:
+
+        i = 0
+        test_accuracies = {}
+        for model_name, model in self.models.items():
+
+            model.eval()
+            correct, total = 0, 0
+            with torch.no_grad():
+                for inputs, targets in test_loader:
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    outputs = model(inputs)
+                    _, predicted = outputs.max(1)
+                    total += targets.size(0)
+                    correct += predicted.eq(targets).sum().item()
+            test_acc = correct / total
+            self.writers[i].add_scalar('Test/Accuracy', test_acc)
+            self.writers[i].close()
+
+            i += 1
+
+            test_accuracies[model_name] = test_acc
+
+        return test_accuracies
+        
