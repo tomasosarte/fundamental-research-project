@@ -15,6 +15,11 @@ make install
 
 3. ## Donwload datasets
 
+
+### PCAM
 ```
 make download_pcam
 ```
+
+### Rot-MNIST
+The dataset can be downloaded from: https://drive.google.com/file/d/1PcPdBOyImivBz3IMYopIizGvJOnfgXGD/view?usp=sharing

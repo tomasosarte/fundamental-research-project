@@ -3,6 +3,8 @@
 
 # Temporary files/folders
 __pycache__/
+.DS_Store
+.ipynb_checkpoints/
 
 # Ignore datasets
 data/
