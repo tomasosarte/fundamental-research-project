@@ -1,3 +1,4 @@
+absl-py==2.3.0
 anyio==4.9.0
 argon2-cffi==25.1.0
 argon2-cffi-bindings==21.2.0
@@ -12,6 +13,7 @@ bleach==6.2.0
 certifi==2025.4.26
 cffi==1.17.1
 charset-normalizer==3.4.2
+click==8.2.1
 comm==0.2.2
 debugpy==1.8.14
 decorator==5.2.1
@@ -22,6 +24,7 @@ fastjsonschema==2.21.1
 filelock==3.13.1
 fqdn==1.5.1
 fsspec==2024.6.1
+grpcio==1.72.1
 h11==0.16.0
 h5py==3.13.0
 httpcore==1.0.9
@@ -49,6 +52,7 @@ jupyterlab==4.4.3
 jupyterlab_pygments==0.3.0
 jupyterlab_server==2.27.3
 jupyterlab_widgets==3.0.15
+Markdown==3.8
 MarkupSafe==2.1.5
 matplotlib-inline==0.1.7
 mistune==3.1.3
@@ -85,6 +89,7 @@ pipreqs==0.5.0
 platformdirs==4.3.8
 prometheus_client==0.22.1
 prompt_toolkit==3.0.51
+protobuf==6.31.1
 psutil==7.0.0
 ptyprocess==0.7.0
 pure_eval==0.2.3
@@ -106,6 +111,8 @@ sniffio==1.3.1
 soupsieve==2.7
 stack-data==0.6.3
 sympy==1.13.1
+tensorboard==2.19.0
+tensorboard-data-server==0.7.2
 terminado==0.18.1
 tinycss2==1.4.0
 torch==2.6.0+cu124
@@ -122,5 +129,6 @@ wcwidth==0.2.13
 webcolors==24.11.1
 webencodings==0.5.1
 websocket-client==1.8.0
+Werkzeug==3.1.3
 widgetsnbextension==4.0.14
 yarg==0.1.9
