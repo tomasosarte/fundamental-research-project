@@ -12,8 +12,8 @@ from src.models.attgconv.attention_layers import fSpatialAttentionGG
 
 
 class fA_P4AllCNNC(P4AllCNNC):
-    def __init__(self):
-        super(fA_P4AllCNNC, self).__init__()
+    def __init__(self, n_channels: int = 48):
+        super(fA_P4AllCNNC, self).__init__(n_channels=n_channels)
 
         # --- Configuration ---
         self.group_name = 'SE2'

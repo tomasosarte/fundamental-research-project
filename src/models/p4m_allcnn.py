@@ -6,7 +6,7 @@ import src.models.attgconv as attgconv
 
 
 class P4MAllCNNC(nn.Module):
-    def __init__(self):
+    def __init__(self, n_channels: int = 32):
         super().__init__()
 
         # === Config ===
@@ -18,7 +18,7 @@ class P4MAllCNNC(nn.Module):
             "stride": 1,
             "padding": 1,
             "kernel_size": 3,
-            "N_channels": 32,
+            "N_channels": n_channels,
             "eps": 2e-5,
             "wscale": 0.035,
         }
