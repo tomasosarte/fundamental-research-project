@@ -54,15 +54,17 @@ class H:
     # Define how H acts transitively on R^n
     ## TODO: So far just for multiples of 90 degrees. No interpolation required
     def left_representation_on_Rn(h, xx):
-        if h == H.e:
+        if torch.all(h == H.e):
             return xx
-        else:
-            xx_new = torch.rot90(xx, k=int(torch.round((1./(np.pi/2.)*h)).item()), dims=[-2, -1])
-            return xx_new
+
+        k = int(round(2 * h.item() / np.pi))
+        return torch.rot90(xx, k=k, dims=[-2, -1])
 
     def left_representation_on_G(h, fx):
         h_inv_weight = H.left_representation_on_Rn(h, fx)
-        h_inv_weight = torch.roll(h_inv_weight, shifts=int(torch.round((1. / (np.pi / 2.) * h)).item()), dims=2)
+        k = int(round(2 * h.item() / np.pi))
+        if k != 0:
+            h_inv_weight = torch.roll(h_inv_weight, shifts=k, dims=2)
         return h_inv_weight
 
     ## Essential in the group convolutions
@@ -88,9 +90,9 @@ class H:
             self.scale = [2 * np.pi / N]
             # Generate the grid
             if self.N == 0:
-                h_list = torch.tensor([], dtype=torch.float32)
+                h_list = torch.empty(0, 1, dtype=torch.float32)
             else:
-                h_list = torch.from_numpy(np.array([np.linspace(0, 2*np.pi - 2*np.pi/N,N)], dtype=np.float32).transpose())
+                h_list = torch.linspace(0, 2 * np.pi - 2 * np.pi / N, N, dtype=torch.float32).unsqueeze(1)
             self.grid = h_list
             # -------------------
             # Update haar measure
