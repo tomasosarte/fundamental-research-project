@@ -23,40 +23,35 @@ class H:
     # Define how H acts transitively on R^n
     ## TODO: So far just for multiples of 90 degrees. No interpolation required
     def left_representation_on_Rn(h, fx):
-        if not False in (h == H.e):
+        if torch.all(h == H.e):
             return fx
-        else:
-            # Fist rotate, then mirror
-            Lgfx = fx
-            # Rotate:
-            Lgfx = torch.rot90(Lgfx, k=int(torch.round((1. / (np.pi / 2.) * h[0])).item()), dims=[-2, -1])
-            # Mirror
-            if h[-1] == -1:
-                Lgfx = torch.flip(Lgfx, dims=[-2])      # mirrorings on the x axis.
-            # Return Lgfx
-            return Lgfx
+
+        # Rotate first and mirror afterwards
+        k = int(round(2 * h[0].item() / np.pi))
+        Lgfx = torch.rot90(fx, k=k, dims=[-2, -1])
+
+        if h[-1] == -1:
+            Lgfx = torch.flip(Lgfx, dims=[-2])  # mirrorings on the x axis.
+
+        return Lgfx
 
     def left_representation_on_G(h, fx):
-        if not False in (h == H.e):
+        if torch.all(h == H.e):
             return fx
-        else:
-            shape = fx.shape
-            # First rotate then mirror
-            Lgfx = H.left_representation_on_Rn(h, fx)
-            # Now permute the axes
-            Lgfx = torch.reshape(Lgfx, [shape[0], shape[1], 2, 4, shape[-2], shape[-1]])
-            # First permutation on rotate, then on mirror
-            # They rotate in opposite directions
-            if h[0] != 0:
-                Lgfx[:, :, 0, :, :, :] = torch.roll(Lgfx[:, :, 0, :, :, :], shifts=int(torch.round((1. / (np.pi / 2.) * h[0])).item()), dims=2)
-                Lgfx[:, :, 1, :, :, :] = torch.roll(Lgfx[:, :, 1, :, :, :], shifts=-int(torch.round((1. / (np.pi / 2.) * h[0])).item()), dims=2)
-            if h[-1] == -1:
-                # Then on the m axis
-                Lgfx = torch.roll(Lgfx, shifts=1, dims=2)
-            # Reshape
-            Lgfx = torch.reshape(Lgfx, shape)
-            # Return Lgfx
-            return Lgfx
+
+        shape = fx.shape
+        Lgfx = H.left_representation_on_Rn(h, fx)
+        Lgfx = Lgfx.view(shape[0], shape[1], 2, 4, shape[-2], shape[-1])
+
+        k = int(round(2 * h[0].item() / np.pi))
+        if k != 0:
+            Lgfx[:, :, 0] = torch.roll(Lgfx[:, :, 0], shifts=k, dims=2)
+            Lgfx[:, :, 1] = torch.roll(Lgfx[:, :, 1], shifts=-k, dims=2)
+
+        if h[-1] == -1:
+            Lgfx = torch.roll(Lgfx, shifts=1, dims=2)
+
+        return Lgfx.view(shape)
 
     ## Essential in the group convolutions
     # Define the determinant (of the matrix representation) of the group element
@@ -82,17 +77,15 @@ class H:
             self.scale = [2 * np.pi / N_m]
             # Generate the grid
             if self.N == 0:
-                h_list = torch.tensor([], dtype=torch.float32)
+                h_list_m = torch.empty(0, 2, dtype=torch.float32)
             else:
-                h_list = np.array([np.linspace(0, 2 * np.pi - 2 * np.pi / N_m, N_m)], dtype=np.float32).transpose()
-                h_list_m = np.stack(((np.concatenate((h_list, h_list), axis=0)).squeeze(),                                                  # 2 times rotation
-                                     np.concatenate((np.ones(N_m, dtype=np.float32), -1 * np.ones(N_m, dtype=np.float32))).transpose()),    # [1, ..., -1, ...]
-                                    axis=1)
-                h_list_m = torch.from_numpy(h_list_m)
+                angles = np.linspace(0, 2 * np.pi, N_m, endpoint=False, dtype=np.float32)
+                mirrors = np.concatenate((np.ones(N_m, dtype=np.float32), -np.ones(N_m, dtype=np.float32)))
+                h_list_m = torch.from_numpy(np.stack((np.concatenate((angles, angles)), mirrors), axis=1))
             self.grid = h_list_m
             # -------------------
             # Update haar measure
-            H.haar_meas = 2 * (2 * np.pi / N_m)
+            H.haar_meas = 4 * np.pi / N_m
 
 
 ## The derived group G = R^n \rtimes H.
