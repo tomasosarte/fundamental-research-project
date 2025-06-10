@@ -21,6 +21,7 @@ class Trainer:
             SummaryWriter(log_dir=f"{log_dir}/{model_name}")
             for model_name in models.keys()
         ]
+        torch.backends.cudnn.benchmark = True
 
         # Device setup
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,7 +47,8 @@ class Trainer:
             epoch_bar = tqdm(range(num_epochs), desc="Training Epochs")
 
             for epoch in epoch_bar:
-
+                
+                model.train()
                 total_loss, correct, total = 0, 0, 0
 
                 for inputs, targets in train_loader:
@@ -57,6 +59,8 @@ class Trainer:
                         outputs = model(inputs)
                         loss = self.criterions[i](outputs, targets)
                     scaler.scale(loss).backward()
+                    scaler.unscale_(self.optimizers[i])
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     scaler.step(self.optimizers[i])
                     scaler.update()
                     total_loss += loss.item() * inputs.size(0)
