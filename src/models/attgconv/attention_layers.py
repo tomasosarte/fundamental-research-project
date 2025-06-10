@@ -25,8 +25,8 @@ class ChannelAttention(torch.nn.Module):
         torch.nn.init.kaiming_uniform_(self.weight_fc2, a=math.sqrt(5))
 
     def forward(self, input):
-        input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
-        input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
+        input_mean = input.mean(dim=(-2, -1)).unsqueeze(-1)
+        input_max = torch.amax(input, dim=(-2, -1)).unsqueeze(-1)
         avg_out = self._linear(torch.relu(self._linear(input_mean, self.weight_fc1)), self.weight_fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, self.weight_fc1)), self.weight_fc2)
         out = torch.sigmoid(avg_out + max_out)
@@ -50,8 +50,8 @@ class ChannelAttentionGG(ChannelAttention):
 
     def forward(self, input):
         fc1, fc2 = self._left_action_of_h_grid()
-        input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
-        input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
+        input_mean = input.mean(dim=(-2, -1)).unsqueeze(-1)
+        input_max = torch.amax(input, dim=(-2, -1)).unsqueeze(-1)
         avg_out = self._linear(torch.relu(self._linear(input_mean, fc1)), fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, fc1)), fc2)
         out = torch.sigmoid(avg_out + max_out)
@@ -165,8 +165,8 @@ class fChannelAttention(torch.nn.Module):
         torch.nn.init.kaiming_uniform_(self.weight_fc2, a=math.sqrt(5))
 
     def forward(self, input):
-        input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
-        input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
+        input_mean = input.mean(dim=(-2, -1)).unsqueeze(-1)
+        input_max = torch.amax(input, dim=(-2, -1)).unsqueeze(-1)
         avg_out = self._linear(torch.relu(self._linear(input_mean, self.weight_fc1)), self.weight_fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, self.weight_fc1)), self.weight_fc2)
         out = torch.sigmoid(avg_out + max_out)
@@ -207,8 +207,8 @@ class fChannelAttentionGG(torch.nn.Module):
 
     def forward(self, input):
         fc1, fc2 = self.action()
-        input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
-        input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
+        input_mean = input.mean(dim=(-2, -1)).unsqueeze(-1)
+        input_max = torch.amax(input, dim=(-2, -1)).unsqueeze(-1)
         avg_out = self._linear(torch.relu(self._linear(input_mean, fc1)), fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, fc1)), fc2)
         out = torch.sigmoid(avg_out + max_out)
@@ -260,7 +260,7 @@ class fSpatialAttention(ConvRnGLayer):
         padding = dilation * (kernel_size // 2)
         super(fSpatialAttention, self).__init__(group, N_in, N_out, kernel_size, h_grid, stride, padding, dilation, groups, wscale)
 
-    def forward(self, input, visualize=False):
+    def forward(self, input):
         return self.f_att_conv2d(input)
 
     def f_att_conv2d(self, input):
@@ -289,7 +289,7 @@ class fSpatialAttentionGG(ConvGGLayer):
         padding = dilation * (kernel_size // 2)
         super(fSpatialAttentionGG, self).__init__(group, N_in, N_out, kernel_size, input_h_grid, input_h_grid, stride, padding, dilation, groups, wscale)
 
-    def forward(self, input, visualize=False):
+    def forward(self, input):
         return self.f_att_conv_GG(input)
 
     def f_att_conv_GG(self, input):
