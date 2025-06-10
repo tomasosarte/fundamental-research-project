@@ -3,18 +3,22 @@ import torch
 import torch.nn as nn
 from math import sqrt
 import functools
+import importlib
 
+import src.models.attgconv as attgconv
+from src.models.attgconv.attention_layers import fChannelAttention as ch_RnG
+from src.models.attgconv.attention_layers import fChannelAttentionGG
+from src.models.attgconv.attention_layers import fSpatialAttention
+from src.models.attgconv.attention_layers import fSpatialAttentionGG
 
 class fA_P4MResNet(nn.Module):
     def __init__(self, num_blocks=7, nc32=11, nc16=23, nc8=45):
 
         super(fA_P4MResNet, self).__init__()
 
-        import importlib
         group_name = 'E2'
         group = importlib.import_module('src.models.attgconv.group.' + group_name)
 
-        import src.models.attgconv as attgconv
         e2_layers = attgconv.layers(group)
 
         n_grid = 8
@@ -35,11 +39,6 @@ class fA_P4MResNet(nn.Module):
         ch_ratio = 16
         sp_kernel_size = 7
         sp_padding = (sp_kernel_size // 2)
-
-        from src.models.attgconv.attention_layers import fChannelAttention as ch_RnG
-        from src.models.attgconv.attention_layers import fChannelAttentionGG
-        from src.models.attgconv.attention_layers import fSpatialAttention
-        from src.models.attgconv.attention_layers import fSpatialAttentionGG
 
         ch_GG = functools.partial(fChannelAttentionGG, N_h_in=n_grid, group=group_name)
         sp_RnG = functools.partial(fSpatialAttention, wscale=wscale)
@@ -91,7 +90,7 @@ class fA_P4MResNet(nn.Module):
         h = self.layers_nc8(h)
         h = self.bn_out(h)
         h = torch.relu(h)
-        h = self.avg_pooling(h, kernel_size=h.shape[-1], stride=1, padding=0) # TODO check!
+        h = self.avg_pooling(h, kernel_size=h.shape[-1], stride=1, padding=0)
         h = self.c_out(h)
         h = h.mean(dim=2)
         h = h.view(h.size(0), 10)
@@ -106,11 +105,8 @@ class fA_P4MResBlock2D(nn.Module):
         if not padding == (kernel_size - 1) // 2:
             raise NotImplementedError()
 
-
-        import importlib
         group_name = 'E2'
         group = importlib.import_module('src.models.attgconv.group.' + group_name)
-        import src.models.attgconv as attgconv
         e2_layers = attgconv.layers(group)
         n_grid = 8
         self.h_grid = e2_layers.H.grid_global(n_grid)  # 2*p4
@@ -119,11 +115,6 @@ class fA_P4MResBlock2D(nn.Module):
 
         sp_kernel_size = 7
         sp_padding = (sp_kernel_size // 2)
-
-        from src.models.attgconv.attention_layers import fChannelAttention as ch_RnG
-        from src.models.attgconv.attention_layers import fChannelAttentionGG
-        from src.models.attgconv.attention_layers import fSpatialAttention
-        from src.models.attgconv.attention_layers import fSpatialAttentionGG
 
         ch_GG = functools.partial(fChannelAttentionGG, N_h_in=n_grid, group=group_name)
         sp_RnG = functools.partial(fSpatialAttention, wscale=wscale)

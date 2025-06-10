@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from math import sqrt
 import functools
+import importlib
+import src.models.attgconv as attgconv
 
 
 # based on the implementation from Cohen & Welling - 2016
@@ -13,11 +15,9 @@ class P4MResBlock2D(nn.Module):
         if not padding == (kernel_size - 1) // 2:
             raise NotImplementedError()
 
-        import importlib
         group_name = 'E2'
         group = importlib.import_module('src.models.attgconv.group.' + group_name)
 
-        import src.models.attgconv as attgconv
         e2_layers = attgconv.layers(group)
         self.h_grid = e2_layers.H.grid_global(8)
 
@@ -40,7 +40,7 @@ class P4MResBlock2D(nn.Module):
         if fiber_map == 'id':
             if not in_channels == out_channels:
                 raise ValueError('fiber_map cannot be identity when channel dimension is changed.')
-            self.fiber_map = nn.Sequential() # Identity
+            self.fiber_map = nn.Sequential()
         elif fiber_map == 'zero_pad':
             raise NotImplementedError()
         elif fiber_map == 'linear':
@@ -66,10 +66,8 @@ class P4MResNet(nn.Module):
 
         super(P4MResNet, self).__init__()
 
-        import importlib
         group_name = 'E2'
         group = importlib.import_module('src.models.attgconv.group.' + group_name)
-        import src.models.attgconv as attgconv
         e2_layers = attgconv.layers(group)
 
         self.h_grid = e2_layers.H.grid_global(8)
@@ -78,7 +76,6 @@ class P4MResNet(nn.Module):
         padding = 1
         kernel_size = 3
         eps = 2e-5
-
 
         wscale = sqrt(2.)
 

@@ -72,6 +72,10 @@ class Trainer:
                         inputs, targets = inputs.to(self.device), targets.to(self.device)
                         outputs = model(inputs)
                         loss = self.criterions[i](outputs, targets)
+                        if torch.isnan(loss):
+                            print(f"[NaN Detected] Model: {list(self.models.keys())[i]}, Epoch: {epoch}")
+                            print("Loss is NaN. Skipping this batch.")
+                            continue
                         val_loss += loss.item() * inputs.size(0)
                         _, predicted = outputs.max(1)
                         val_total += targets.size(0)
