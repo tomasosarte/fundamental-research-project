@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import functools
 import importlib
 from math import sqrt
@@ -82,7 +83,7 @@ class fA_P4MResNet(nn.Module):
         h = self.layers_nc16(h)
         h = self.layers_nc8(h)
         h = self.bn_out(h)
-        h = torch.relu(h)
+        h = F.relu(h, inplace=True)
         h = self.avg_pooling(h, kernel_size=h.shape[-1], stride=1, padding=0)
         h = self.c_out(h)
         return h.mean(dim=2).view(h.size(0), 10)
@@ -140,11 +141,11 @@ class fA_P4MResBlock2D(nn.Module):
             raise ValueError(f'Unknown fiber_map: {fiber_map}')
 
     def forward(self, x):
-        h = self.c1(torch.relu(self.bn1(x)))
+        h = self.c1(F.relu(self.bn1(x), inplace=True))
         if self.really_equivariant:
             h = self.pooling(h, kernel_size=2, stride=2, padding=0)
 
-        h = self.c2(torch.relu(self.bn2(h)))
+        h = self.c2(F.relu(self.bn2(h), inplace=True))
 
         hx = self.fiber_map(x)
         if self.really_equivariant:

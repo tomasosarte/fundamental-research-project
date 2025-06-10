@@ -93,12 +93,12 @@ class P4MResBlock2D(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # conv path
-        h = F.relu(self.bn1(x))
+        h = F.relu(self.bn1(x), inplace=True)
         h = self.conv1(h)
         if self.really_equivariant:
             h = self.pool(h, kernel_size=2, stride=2, padding=0)
 
-        h = F.relu(self.bn2(h))
+        h = F.relu(self.bn2(h), inplace=True)
         h = self.conv2(h)
 
         # skip path
@@ -171,7 +171,7 @@ class P4MResNet(nn.Module):
         h = self.stage32(h)
         h = self.stage16(h)
         h = self.stage8(h)
-        h = F.relu(self.bn_out(h))
+        h = F.relu(self.bn_out(h), inplace=True)
         h = self.avg_pool(h, kernel_size=h.shape[-1], stride=1, padding=0)
         h = self.c_out(h)
         # collapse the fiber‐dimension

@@ -13,7 +13,17 @@ class Trainer:
         log_dir: str = "logs"
         ):
 
-        self.models = models
+        if hasattr(torch, "compile"):
+            compiled = {}
+            for name, model in models.items():
+                try:
+                    compiled[name] = torch.compile(model, mode="reduce-overhead")
+                except Exception as e:
+                    print(f"Warning: torch.compile failed for {name}: {e}")
+                    compiled[name] = model
+            self.models = compiled
+        else:
+            self.models = models
         self.criterions = criterions
         self.optimizers = optimizers
         self.schedulers = schedulers

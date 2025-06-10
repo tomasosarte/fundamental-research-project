@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import importlib
 
 import src.models.attgconv as attgconv
@@ -76,17 +77,17 @@ class P4MAllCNNC(nn.Module):
 
     def forward(self, x):
         out = self.dp_init(x)
-        out = torch.relu(self.bn1(self.c1(out)))
-        out = torch.relu(self.bn2(self.c2(out)))
+        out = F.relu(self.bn1(self.c1(out)), inplace=True)
+        out = F.relu(self.bn2(self.c2(out)), inplace=True)
 
         out = self._maybe_pool(self.c3, self.bn3, out)
-        out = torch.relu(self.bn4(self.c4(out)))
-        out = torch.relu(self.bn5(self.c5(out)))
+        out = F.relu(self.bn4(self.c4(out)), inplace=True)
+        out = F.relu(self.bn5(self.c5(out)), inplace=True)
         out = self._maybe_pool(self.c6, self.bn6, out)
 
-        out = torch.relu(self.bn7(self.c7(out)))
-        out = torch.relu(self.bn8(self.c8(out)))
-        out = torch.relu(self.bn9(self.c9(out)))
+        out = F.relu(self.bn7(self.c7(out)), inplace=True)
+        out = F.relu(self.bn8(self.c8(out)), inplace=True)
+        out = F.relu(self.bn9(self.c9(out)), inplace=True)
 
         out = nn.functional.avg_pool3d(out, kernel_size=out.shape[2:]).squeeze()
         return out
@@ -95,4 +96,4 @@ class P4MAllCNNC(nn.Module):
         h = conv(x)
         if self.really_equivariant:
             h = self.pooling(h, kernel_size=2, stride=2, padding=0)
-        return self.dp(torch.relu(bn(h)))
+        return self.dp(F.relu(bn(h), inplace=True))
