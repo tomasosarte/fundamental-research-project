@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import importlib
 
 import src.models.attgconv as attgconv
@@ -59,6 +60,8 @@ class P4AllCNNC(nn.Module):
         self.bn8 = nn.BatchNorm3d(N2, eps=cfg["eps"])
         self.bn9 = nn.BatchNorm3d(10, eps=cfg["eps"])
 
+        self.global_pool = nn.AdaptiveAvgPool3d(1)
+
     def _make_conv(self, conv_cls, in_ch, out_ch, cfg, kernel_size=None, padding=None):
         k = cfg["kernel_size"] if kernel_size is None else kernel_size
         p = cfg["padding"]     if padding     is None else padding
@@ -81,26 +84,26 @@ class P4AllCNNC(nn.Module):
 
     def forward(self, x):
         out = self.dp_init(x)
-        out = torch.relu(self.bn1(self.c1(out)))
-        out = torch.relu(self.bn2(self.c2(out)))
+        out = F.relu(self.bn1(self.c1(out)), inplace=True)
+        out = F.relu(self.bn2(self.c2(out)), inplace=True)
 
         out = self._maybe_pool(self.c3, self.bn3, out)
 
-        out = torch.relu(self.bn4(self.c4(out)))
-        out = torch.relu(self.bn5(self.c5(out)))
+        out = F.relu(self.bn4(self.c4(out)), inplace=True)
+        out = F.relu(self.bn5(self.c5(out)), inplace=True)
 
         out = self._maybe_pool(self.c6, self.bn6, out)
 
-        out = torch.relu(self.bn7(self.c7(out)))
-        out = torch.relu(self.bn8(self.c8(out)))
-        out = torch.relu(self.bn9(self.c9(out)))
+        out = F.relu(self.bn7(self.c7(out)), inplace=True)
+        out = F.relu(self.bn8(self.c8(out)), inplace=True)
+        out = F.relu(self.bn9(self.c9(out)), inplace=True)
 
-        out = torch.nn.functional.avg_pool3d(out, kernel_size=out.shape[2:]).squeeze()
+        out = self.global_pool(out).squeeze()
         return out
 
     def _maybe_pool(self, conv, bn, x):
         out = conv(x)
         if self.really_equivariant:
             out = self.pooling(out, kernel_size=2, stride=2, padding=0)
-        out = self.dp(torch.relu(bn(out)))
+        out = self.dp(F.relu(bn(out), inplace=True))
         return out
