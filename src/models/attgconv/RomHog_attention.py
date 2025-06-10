@@ -25,7 +25,7 @@ class fSpatialAttention(ConvRnGLayer):
             wscale=wscale,
         )
 
-    def forward(self, x, visualize=False):
+    def forward(self, x):
         out = self.conv_Rn_G(x)
         out, _ = out.max(dim=2)  # Max over group elements
         return torch.sigmoid(out)
@@ -56,6 +56,6 @@ class fSpatialAttentionGG(ConvGGLayer):
             wscale=wscale,
         )
 
-    def forward(self, x, visualize=False):
+    def forward(self, x):
         out = self.conv_G_G(x)
         return torch.sigmoid(out)
