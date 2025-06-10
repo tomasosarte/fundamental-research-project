@@ -11,73 +11,65 @@ class layers(torch.nn.Module):
         self.Rn = group.Rn
         self.H = group.H
 
-
-    def ConvRnRn(self,
-
-                 N_in,
-                 N_out,
-                 kernel_size,
-
-                 stride=1,
-                 padding=1,
-                 dilation=1,
-                 conv_groups = 1,
-                 wscale=1.0):
-        return ConvRnRnLayer(self.group, N_in, N_out, kernel_size, stride, padding, dilation, conv_groups, wscale)
-
-
-    def ConvRnG(
+    def ConvRnRn(
             self,
-
             N_in,
             N_out,
             kernel_size,
-            h_grid,
-
             stride=1,
             padding=1,
             dilation=1,
             conv_groups = 1,
-            wscale = 1.0):
-        return ConvRnGLayer(self.group, N_in, N_out, kernel_size, h_grid, stride, padding, dilation, conv_groups, wscale)
+            wscale=1.0
+        ):
+        return ConvRnRnLayer(self.group, N_in, N_out, kernel_size, stride, padding, dilation, conv_groups, wscale)
 
-
-    def ConvGG(
+    def ConvRnG(
             self,
-
             N_in,
             N_out,
             kernel_size,
             h_grid,
+            stride=1,
+            padding=1,
+            dilation=1,
+            conv_groups = 1,
+            wscale = 1.0
+        ):
+        return ConvRnGLayer(self.group, N_in, N_out, kernel_size, h_grid, stride, padding, dilation, conv_groups, wscale)
 
+    def ConvGG(
+            self,
+            N_in,
+            N_out,
+            kernel_size,
+            h_grid,
             input_h_grid=None,
             stride=1,
             padding=1,
             dilation=1,
             conv_groups=1,
-            wscale = 1.0):
+            wscale = 1.0
+        ):
         return ConvGGLayer(self.group, N_in, N_out, kernel_size, h_grid, input_h_grid, stride, padding, dilation, conv_groups, wscale)
 
     def AttConvRnG(
             self,
-
             N_in,
             N_out,
             kernel_size,
             h_grid,
             channel_attention=None,
             spatial_attention=None,
-
             stride=1,
             padding=1,
             dilation=1,
-            wscale = 1.0):
+            wscale = 1.0
+        ):
         return AttConvRnGLayer(self.group, N_in, N_out, kernel_size, h_grid, channel_attention, spatial_attention, stride, padding, dilation, wscale)
-
 
     def AttConvGG(
             self,
-
             N_in,                   # Number of input channels
             N_out,                  # Number of output channels
             kernel_size,            # Kernel size (integer)
@@ -90,7 +82,8 @@ class layers(torch.nn.Module):
             stride=1,               # Spatial stride in the convolution
             padding=1,              # Padding type
             dilation=1,             # Dilation
-            wscale = 1.0):
+            wscale = 1.0
+        ):
         return AttConvGGLayer(self.group, N_in, N_out, kernel_size, h_grid, channel_attention, spatial_attention, input_h_grid, stride, padding, dilation, wscale)
 
     # Creates a feature map attentive lifting_layer object
@@ -106,7 +99,8 @@ class layers(torch.nn.Module):
             # Optional generic arguments
             stride=1,               # Spatial stride in the convolution
             padding=1,              # Padding type
-            wscale = 1.0):          # White scaling
+            wscale = 1.0            # White scaling
+        ):          
         return fAttConvRnGLayer(self.group, N_in, N_out, kernel_size, h_grid, channel_attention, spatial_attention, stride, padding, wscale)
 
     # Creates a feature map attentive group convolution layer object
@@ -124,7 +118,8 @@ class layers(torch.nn.Module):
             # Optional generic arguments
             stride=1,               # Spatial stride in the convolution
             padding=1,              # Padding type
-            wscale = 1.0):
+            wscale = 1.0
+        ):
         return fAttConvGGLayer(self.group, N_in, N_out, kernel_size, h_grid, channel_attention, spatial_attention, input_h_grid, stride, padding, wscale)
 
     def max_pooling_Rn(self, input, kernel_size, stride, padding = 1):
@@ -146,16 +141,18 @@ class layers(torch.nn.Module):
 ############################## ConvRnRnLayer #############################
 ##########################################################################
 class ConvRnRnLayer(torch.nn.Module):
-    def __init__(self,
-                 group,
-                 N_in,
-                 N_out,
-                 kernel_size,
-                 stride,
-                 padding,
-                 dilation,
-                 conv_groups,
-                 wscale):
+    def __init__(
+            self,
+            group,
+            N_in,
+            N_out,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            conv_groups,
+            wscale
+        ):
         super(ConvRnRnLayer, self).__init__()
         ## Assert and set inputs
         self.kernel_type = 'Rn'
@@ -213,17 +210,18 @@ class ConvRnRnLayer(torch.nn.Module):
         return (1 / self.H.absdet(h)) * self.H.left_representation_on_Rn(h, self.weight)
 
     def forward(self, input):
-        return  self.conv_Rn_Rn(input)
+        return self.conv_Rn_Rn(input)
 
     def conv_Rn_Rn(self, input):
-        output = torch.conv2d(input=input,
-                              weight=self.kernel(self.H.e),
-                              bias= None,
-                              stride=self.stride,
-                              padding=self.padding,
-                              dilation=self.dilation,
-                              groups=self.conv_groups)
-        return output
+        return torch.conv2d(
+            input=input,
+            weight=self.kernel(self.H.e),
+            bias= None,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.conv_groups
+        )
 
     def _reset_parameters(self, wscale):
         n = self.N_in
@@ -241,17 +239,19 @@ class ConvRnRnLayer(torch.nn.Module):
 ##########################################################################
 # Start of lifting_layer class
 class ConvRnGLayer(ConvRnRnLayer, torch.nn.Module):
-    def __init__(self,
-                 group,
-                 N_in,
-                 N_out,
-                 kernel_size,
-                 h_grid,
-                 stride,
-                 padding,
-                 dilation,
-                 conv_groups,
-                 wscale):
+    def __init__(
+            self,
+            group,
+            N_in,
+            N_out,
+            kernel_size,
+            h_grid,
+            stride,
+            padding,
+            dilation,
+            conv_groups,
+            wscale
+        ):
         torch.nn.Module.__init__(self)
         ## Assert and set inputs
         self.kernel_type = 'Rn'
@@ -295,20 +295,6 @@ class ConvRnGLayer(ConvRnRnLayer, torch.nn.Module):
             groups=self.conv_groups)
         # Reshape the last channel to create a vector valued RnxH feature map
         output = torch.stack(torch.split(output, self.N_out, 1), 2)
-
-        #kernel_stack = torch.stack([self.kernel(self.h_grid.grid[i]) for i in range(self.N_h)], dim=1)
-        # ks = kernel_stack.shape
-        # kernel_stack = torch.reshape(kernel_stack, [ks[0] * ks[1], ks[2], ks[-2], ks[-1]])
-        # output_2 = torch.conv2d(
-        #     input=input,
-        #     weight=kernel_stack,
-        #     bias=None,
-        #     stride=self.stride,
-        #     padding=self.padding,
-        #     dilation=self.dilation,
-        #     groups=self.conv_groups)
-        # output_2=output_2.reshape(output_2.shape[0], self.N_out, self.N_h, output_2.shape[-2], output_2.shape[-1])
-        # Return the output
         return output
 
 

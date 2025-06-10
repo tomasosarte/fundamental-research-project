@@ -1,6 +1,11 @@
 import torch
 import math
 import numpy as np
+import importlib
+
+import src.models.attgconv as attgconv
+from src.models.attgconv import ConvRnGLayer
+from src.models.attgconv import ConvGGLayer
 
 
 class ChannelAttention(torch.nn.Module):
@@ -22,13 +27,10 @@ class ChannelAttention(torch.nn.Module):
     def forward(self, input):
         input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
         input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
-
         avg_out = self._linear(torch.relu(self._linear(input_mean, self.weight_fc1)), self.weight_fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, self.weight_fc1)), self.weight_fc2)
         out = torch.sigmoid(avg_out + max_out)
-
         out = torch.reshape(out, [input.shape[0], self.N_out, input.shape[2], self.N_in, 1, 1])
-
         return out
 
     def _linear(self, input, w):
@@ -48,16 +50,12 @@ class ChannelAttentionGG(ChannelAttention):
 
     def forward(self, input):
         fc1, fc2 = self._left_action_of_h_grid()
-
         input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
         input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
-
         avg_out = self._linear(torch.relu(self._linear(input_mean, fc1)), fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, fc1)), fc2)
         out = torch.sigmoid(avg_out + max_out)
-
         out = torch.reshape(out, [input.shape[0], self.N_out, self.N_h, -1, self.N_h_in, 1, 1])
-
         return out
 
     def _linear(self, input, w):
@@ -71,29 +69,26 @@ class ChannelAttentionGG(ChannelAttention):
         fc2 = torch.stack([self.weight_fc2.roll(shifts=i, dims=-1) for i in range(self.N_h)], dim=1)
         return fc1, fc2
 
-
-from src.models.attgconv import ConvRnGLayer
 class SpatialAttention(ConvRnGLayer):
-    def __init__(self,
-                 group,
-                 N_in,
-                 N_out,
-                 kernel_size,
-                 h_grid,
-                 stride,
-                 dilation=1,
-                 wscale=1.0
-                 ):
+    def __init__(
+            self,
+            group,
+            N_in,
+            N_out,
+            kernel_size,
+            h_grid,
+            stride,
+            dilation=1,
+            wscale=1.0
+        ):
         N_in = 2
         padding = dilation * (kernel_size //2)
         super(SpatialAttention, self).__init__(group, N_in, N_out, kernel_size, h_grid, stride, padding=padding, dilation=dilation, conv_groups=len(h_grid.grid), wscale=wscale)
-
 
     def forward(self, input):
         return self.conv_Rn_G(input)
 
     def conv_Rn_G(self, input):
-
         avg_in = torch.mean(input, dim=-3, keepdim=True)
         max_in, _ = torch.max(input, dim=-3, keepdim=True)
         input = torch.cat([avg_in, max_in], dim=-3)
@@ -113,19 +108,19 @@ class SpatialAttention(ConvRnGLayer):
         output = torch.sigmoid(output)
         return output
 
-from src.models.attgconv import ConvGGLayer
 class SpatialAttentionGG(ConvGGLayer):
-    def __init__(self,
-                 group,
-                 N_in,
-                 N_out,
-                 kernel_size,
-                 h_grid,
-                 input_h_grid,
-                 stride,
-                 dilation=1,
-                 wscale=1.0
-                 ):
+    def __init__(
+            self,
+            group,
+            N_in,
+            N_out,
+            kernel_size,
+            h_grid,
+            input_h_grid,
+            stride,
+            dilation=1,
+            wscale=1.0
+        ):
         N_in = 2
         padding = dilation * (kernel_size//2)
         super(SpatialAttentionGG, self).__init__(group, N_in, N_out, kernel_size, h_grid, input_h_grid, stride, padding=padding, dilation=dilation, conv_groups=len(h_grid.grid), wscale=wscale)
@@ -157,8 +152,6 @@ class SpatialAttentionGG(ConvGGLayer):
 
         return output
 
-
-
 class fChannelAttention(torch.nn.Module):
     def __init__(self, N_in, ratio=1):
         super(fChannelAttention, self).__init__()
@@ -166,7 +159,6 @@ class fChannelAttention(torch.nn.Module):
         self.ratio = ratio
         self.weight_fc1 = torch.nn.Parameter(torch.Tensor(self.N_in // ratio, self.N_in))
         self.weight_fc2 = torch.nn.Parameter(torch.Tensor(self.N_in, self.N_in // ratio))
-
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -179,9 +171,7 @@ class fChannelAttention(torch.nn.Module):
         avg_out = self._linear(torch.relu(self._linear(input_mean, self.weight_fc1)), self.weight_fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, self.weight_fc1)), self.weight_fc2)
         out = torch.sigmoid(avg_out + max_out)
-
         out = torch.reshape(out, [input.shape[0], self.N_in, 1, 1])
-
         return out
 
     def _linear(self, input, w):
@@ -203,11 +193,9 @@ class fChannelAttentionGG(torch.nn.Module):
 
         self.action = self._left_action_of_h_grid_se2
         if group == 'E2':
-            import importlib
+            
             group = importlib.import_module('src.models.attgconv.group.' + group)
-            import src.models.attgconv as attgconv
             e2_layers = attgconv.layers(group)
-
             n_grid = 8
             self.h_grid = e2_layers.H.grid_global(n_grid)
             self.action = self._left_action_on_grid_e2
@@ -215,23 +203,17 @@ class fChannelAttentionGG(torch.nn.Module):
 
 
     def reset_parameters(self):
-
         torch.nn.init.kaiming_uniform_(self.weight_fc1, a=math.sqrt(5))
         torch.nn.init.kaiming_uniform_(self.weight_fc2, a=math.sqrt(5))
 
     def forward(self, input):
-
         fc1, fc2 = self.action()
-
         input_mean = input.mean(dim=[-2, -1]).unsqueeze(-1)
         input_max = input.max(dim=-2)[0].max(dim=-1)[0].unsqueeze(-1)
-
         avg_out = self._linear(torch.relu(self._linear(input_mean, fc1)), fc2)
         max_out = self._linear(torch.relu(self._linear(input_max, fc1)), fc2)
         out = torch.sigmoid(avg_out + max_out)
-
         out = torch.reshape(out, [out.shape[0], self.N_in, self.N_h_in, 1, 1])
-
         return out
 
     def _linear(self, input, w):
@@ -251,95 +233,70 @@ class fChannelAttentionGG(torch.nn.Module):
         return fc1, fc2
 
     def _left_action_of_h_grid_e2(self, h, fx):
-
         shape = fx.shape
         Lgfx = fx.clone()
-
         Lgfx = torch.reshape(Lgfx, [shape[0], shape[1], 2, 4])
-
         if h[0] != 0:
             Lgfx[:, :, 0, :] = torch.roll(Lgfx[:, :, 0, :], shifts=int(torch.round((1. / (np.pi / 2.) * h[0])).item()), dims=-1)
             Lgfx[:, :, 1, :] = torch.roll(Lgfx[:, :, 1, :], shifts=-int(torch.round((1. / (np.pi / 2.) * h[0])).item()), dims=-1)
         if h[-1] == -1:
-
             Lgfx = torch.roll(Lgfx, shifts=1, dims=-2)
-
         Lgfx = torch.reshape(Lgfx, shape)
-
         return Lgfx
 
 
 class fSpatialAttention(ConvRnGLayer):
-    def __init__(self,
-                 group,
-                 kernel_size,
-                 h_grid,
-                 stride=1,
-                 dilation=1,
-                 groups=1,
-                 wscale=1.0
-                 ):
-
-
+    def __init__(
+            self,
+            group,
+            kernel_size,
+            h_grid,
+            stride=1,
+            dilation=1,
+            groups=1,
+            wscale=1.0
+        ):
         N_in = 2
         N_out = 1
         padding = dilation * (kernel_size // 2)
-
         super(fSpatialAttention, self).__init__(group, N_in, N_out, kernel_size, h_grid, stride, padding, dilation, groups, wscale)
 
-
     def forward(self, input, visualize=False):
-        return self.f_att_conv2d(input, visualize)
+        return self.f_att_conv2d(input)
 
-    def f_att_conv2d(self, input, visualize):
-
+    def f_att_conv2d(self, input):
         avg_in = torch.mean(input, dim=-3, keepdim=True)
         max_in, _ = torch.max(input, dim=-3, keepdim=True)
         input = torch.cat([avg_in, max_in], dim=-3)
-
         output = self.conv_Rn_G(input)
-
         output, _ = output.max(dim=2)
-
         output = torch.sigmoid(output)
-
-        if False:
-            self.att_map = output
-
         return output
 
-
-from src.models.attgconv import ConvGGLayer
 class fSpatialAttentionGG(ConvGGLayer):
-    def __init__(self,
-                 group,
-                 kernel_size,
-                 input_h_grid,
-                 stride=1,
-                 padding=0,
-                 dilation=1,
-                 groups=1,
-                 wscale=1.0
-                 ):
+    def __init__(
+            self,
+            group,
+            kernel_size,
+            input_h_grid,
+            stride=1,
+            padding=0,
+            dilation=1,
+            groups=1,
+            wscale=1.0
+        ):
         N_in = 2
         N_out = 1
         padding = dilation * (kernel_size // 2)
         super(fSpatialAttentionGG, self).__init__(group, N_in, N_out, kernel_size, input_h_grid, input_h_grid, stride, padding, dilation, groups, wscale)
 
-
     def forward(self, input, visualize=False):
-        return self.f_att_conv_GG(input, visualize)
+        return self.f_att_conv_GG(input)
 
-    def f_att_conv_GG(self, input, visualize):
-
+    def f_att_conv_GG(self, input):
         avg_in = torch.mean(input, dim=-4, keepdim=True)
         max_in, _ = torch.max(input, dim=-4, keepdim=True)
         input = torch.cat([avg_in, max_in], dim=-4)
         output = self.conv_G_G(input)
-
         output = torch.sigmoid(output)
-
-        if False:
-            self.att_map = output
-
         return output
