@@ -125,7 +125,6 @@ class SpatialAttentionGG(ConvGGLayer):
         padding = dilation * (kernel_size//2)
         super(SpatialAttentionGG, self).__init__(group, N_in, N_out, kernel_size, h_grid, input_h_grid, stride, padding=padding, dilation=dilation, conv_groups=len(h_grid.grid), wscale=wscale)
 
-
     def forward(self, input):
         return self.conv_G_G(input)
 

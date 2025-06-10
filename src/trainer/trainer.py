@@ -35,7 +35,7 @@ class Trainer:
         val_loader: torch.utils.data.DataLoader = None,
         ) -> None:
 
-        scaler = torch.cuda.amp.GradScaler(enabled=self.device.type == "cuda")
+        scaler = torch.amp.GradScaler("cuda", enabled=self.device.type == "cuda")
 
         i = 0
         for model_name, model in self.models.items():
@@ -53,7 +53,7 @@ class Trainer:
 
                     inputs, targets = inputs.to(self.device), targets.to(self.device)
                     self.optimizers[i].zero_grad()
-                    with torch.cuda.amp.autocast(enabled=self.device.type == "cuda"):
+                    with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                         outputs = model(inputs)
                         loss = self.criterions[i](outputs, targets)
                     scaler.scale(loss).backward()
@@ -76,20 +76,27 @@ class Trainer:
                 with torch.no_grad():
                     for inputs, targets in val_loader:
                         inputs, targets = inputs.to(self.device), targets.to(self.device)
-                        with torch.cuda.amp.autocast(enabled=self.device.type == "cuda"):
+                        with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                             outputs = model(inputs)
                             loss = self.criterions[i](outputs, targets)
                         if torch.isnan(loss):
                             print(f"[NaN Detected] Model: {list(self.models.keys())[i]}, Epoch: {epoch}")
-                            print("Loss is NaN. Skipping this batch.")
                             continue
                         val_loss += loss.item() * inputs.size(0)
                         _, predicted = outputs.max(1)
                         val_total += targets.size(0)
                         val_correct += predicted.eq(targets).sum().item()
-                val_acc = val_correct / val_total
-                val_loss = val_loss / val_total
-                self.writers[i].add_scalar('Val/Loss', val_loss / val_total, epoch)
+                if val_total > 0:
+                    val_acc = val_correct / val_total
+                    val_loss = val_loss / val_total
+                else:
+                    print(
+                        f"No valid validation samples for model {list(self.models.keys())[i]} at epoch {epoch}."
+                    )
+                    val_acc = float('nan')
+                    val_loss = float('nan')
+
+                self.writers[i].add_scalar('Val/Loss', val_loss, epoch)
                 self.writers[i].add_scalar('Val/Accuracy', val_acc, epoch)
 
                 self.schedulers[i].step()
@@ -120,7 +127,7 @@ class Trainer:
             with torch.no_grad():
                 for inputs, targets in test_loader:
                     inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    with torch.cuda.amp.autocast(enabled=self.device.type == "cuda"):
+                    with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                         outputs = model(inputs)
                     _, predicted = outputs.max(1)
                     total += targets.size(0)

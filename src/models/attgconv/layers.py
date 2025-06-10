@@ -316,7 +316,7 @@ class ConvGGLayer(ConvRnGLayer, torch.nn.Module):
             dilation,
             conv_groups,
             wscale
-            ):
+        ):
         torch.nn.Module.__init__(self)
         ## Assert and set inputs
         self.kernel_type = 'G'
@@ -390,7 +390,8 @@ class ConvGGLayer(ConvRnGLayer, torch.nn.Module):
             stride=self.stride,
             padding=self.padding,
             dilation=self.dilation,
-            groups=self.conv_groups)
+            groups=self.conv_groups
+        )
         output = torch.stack(torch.split(output, self.N_out, 1), 2)
         output = self.group.H.haar_meas * output
         return output
@@ -398,22 +399,23 @@ class ConvGGLayer(ConvRnGLayer, torch.nn.Module):
 
 
 class AttConvRnGLayer(ConvRnGLayer):
-    def __init__(self,
-                 group,
-                 N_in,
-                 N_out,
-                 kernel_size,
-                 h_grid,
-                 channel_attention,
-                 spatial_attention,
-                 stride,
-                 padding,
-                 dilation,
-                 wscale):
+    def __init__(
+            self,
+            group,
+            N_in,
+            N_out,
+            kernel_size,
+            h_grid,
+            channel_attention,
+            spatial_attention,
+            stride,
+            padding,
+            dilation,
+            wscale
+        ):
         super(AttConvRnGLayer, self).__init__(group, N_in, N_out, kernel_size, h_grid, stride, padding, dilation, conv_groups=N_in, wscale=wscale)
         self.channel_attention = channel_attention
         self.spatial_attention = spatial_attention
-
 
     def forward(self, input):
         return self.att_conv_Rn_G(input)
@@ -431,7 +433,8 @@ class AttConvRnGLayer(ConvRnGLayer):
             stride=self.stride,
             padding=self.padding,
             dilation=self.dilation,
-            groups=self.conv_groups)
+            groups=self.conv_groups
+        )
         output = torch.reshape(output, [output.shape[0], self.N_in, self.N_out * self.N_h, output.shape[-2], output.shape[-1]])
         output = torch.transpose(output, 1, 2)
         output = torch.reshape(output, [output.shape[0], self.N_out, self.N_h, self.N_in, output.shape[-2], output.shape[-1]])
@@ -454,7 +457,6 @@ class AttConvRnGLayer(ConvRnGLayer):
 
     def _perform_spatial_attention(self, input):
         output = self.spatial_attention(input)
-
         output = output * input
         return output
 
@@ -474,12 +476,11 @@ class AttConvGGLayer(ConvGGLayer, torch.nn.Module):
             stride,
             padding,
             dilation,
-            wscale):
+            wscale
+        ):
         super(AttConvGGLayer, self).__init__(group, N_in, N_out, kernel_size, h_grid, input_h_grid,stride, padding, dilation, conv_groups=N_in, wscale=wscale)
         self.channel_attention = channel_attention
         self.spatial_attention = spatial_attention
-
-
 
     # Method overriding:
     def forward(self, input):
@@ -541,17 +542,19 @@ class AttConvGGLayer(ConvGGLayer, torch.nn.Module):
 # Start of lifting_layer class
 class fAttConvRnGLayer(ConvRnGLayer):
     # The initialization of both layers is equal up to the additional parameters
-    def __init__(self,
-                 group,
-                 N_in,
-                 N_out,
-                 kernel_size,
-                 h_grid,
-                 channel_attention,
-                 spatial_attention,
-                 stride,
-                 padding,
-                 wscale):
+    def __init__(
+            self,
+            group,
+            N_in,
+            N_out,
+            kernel_size,
+            h_grid,
+            channel_attention,
+            spatial_attention,
+            stride,
+            padding,
+            wscale
+        ):
         super(fAttConvRnGLayer, self).__init__(group, N_in, N_out, kernel_size, h_grid, stride, padding, dilation=1, conv_groups=1, wscale=wscale)
         self.channel_attention = channel_attention
         self.spatial_attention = spatial_attention
@@ -607,7 +610,8 @@ class fAttConvGGLayer(ConvGGLayer):
             input_h_grid,
             stride,
             padding,
-            wscale):
+            wscale
+        ):
         super(fAttConvGGLayer, self).__init__(group, N_in, N_out, kernel_size, h_grid, input_h_grid,stride, padding, dilation=1, conv_groups=1, wscale=wscale)
         self.channel_attention = channel_attention
         self.spatial_attention = spatial_attention
