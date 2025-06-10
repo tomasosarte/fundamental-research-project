@@ -3,6 +3,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tqdm import tqdm
 
+torch.set_float32_matmul_precision("medium")
+
 class Trainer:
 
     def __init__(self,
@@ -21,7 +23,6 @@ class Trainer:
             SummaryWriter(log_dir=f"{log_dir}/{model_name}")
             for model_name in models.keys()
         ]
-        torch.backends.cudnn.benchmark = True
 
         # Device setup
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,6 +30,7 @@ class Trainer:
         if self.device.type == 'cuda':
             print(f"Current GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}")
             torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
         
     def train(self,
         num_epochs: int = 350,
@@ -38,8 +40,7 @@ class Trainer:
 
         scaler = torch.amp.GradScaler("cuda", enabled=self.device.type == "cuda")
 
-        i = 0
-        for model_name, model in self.models.items():
+        for i, (model_name, model) in enumerate(self.models.items()):
             print(f"Training model : {model_name}")
 
             model.to(self.device)
@@ -52,8 +53,8 @@ class Trainer:
                 total_loss, correct, total = 0, 0, 0
 
                 for inputs, targets in train_loader:
-
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    inputs = inputs.to(self.device, non_blocking=True)
+                    targets = targets.to(self.device, non_blocking=True)
                     self.optimizers[i].zero_grad()
                     with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                         outputs = model(inputs)
@@ -79,7 +80,8 @@ class Trainer:
                 val_loss, val_correct, val_total = 0, 0, 0
                 with torch.no_grad():
                     for inputs, targets in val_loader:
-                        inputs, targets = inputs.to(self.device), targets.to(self.device)
+                        inputs = inputs.to(self.device, non_blocking=True)
+                        targets = targets.to(self.device, non_blocking=True)
                         with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                             outputs = model(inputs)
                             loss = self.criterions[i](outputs, targets)
@@ -114,23 +116,22 @@ class Trainer:
             # Clean gpu if using it:
             if self.device ==  "cuda":
                 torch.cuda.empty_cache()
-            i += 1
 
     def evaluate(
             self,
             test_loader: torch.utils.data.DataLoader,
         ) -> dict[str, float]:
 
-        i = 0
         test_accuracies = {}
-        for model_name, model in self.models.items():
+        for i, (model_name, model) in enumerate(self.models.items()):
 
             model.to(self.device)
             model.eval()
             correct, total = 0, 0
             with torch.no_grad():
                 for inputs, targets in test_loader:
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    inputs = inputs.to(self.device, non_blocking=True)
+                    targets = targets.to(self.device, non_blocking=True)
                     with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                         outputs = model(inputs)
                     _, predicted = outputs.max(1)
@@ -139,9 +140,6 @@ class Trainer:
             test_acc = correct / total
             self.writers[i].add_scalar('Test/Accuracy', test_acc)
             self.writers[i].close()
-
-            i += 1
-
             test_accuracies[model_name] = test_acc
 
         return test_accuracies
