@@ -1,124 +1,178 @@
 import torch
 import torch.nn as nn
-from math import sqrt
-import functools
+import torch.nn.functional as F
 import importlib
+from math import sqrt
+
 import src.models.attgconv as attgconv
 
+# —————————————————————————————————————————————————————————————
+# Module­-level setup
+# —————————————————————————————————————————————————————————————
+_group     = importlib.import_module("src.models.attgconv.group.E2")
+_layers    = attgconv.layers(_group)
+_h_grid    = _layers.H.grid_global(8)
+_POOL_Rn   = _layers.max_pooling_Rn
+_AVG_Rn    = _layers.average_pooling_Rn
+# Shared hyperparameters
+_EPS       = 2e-5
+_KSIZE     = 3
+_PADDING   = 1
+_WSCALE    = sqrt(2.)
 
-# based on the implementation from Cohen & Welling - 2016
+
+# —————————————————————————————————————————————————————————————
+# Equivariant residual block
+# —————————————————————————————————————————————————————————————
 class P4MResBlock2D(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, fiber_map='id', stride=1, padding=1, wscale=1.0):
-        super(P4MResBlock2D, self).__init__()
-
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = _KSIZE,
+        fiber_map: str = "id",
+        stride: int = 1,
+        padding: int = _PADDING,
+        wscale: float = _WSCALE,
+    ):
+        super().__init__()
         assert kernel_size % 2 == 1
-        if not padding == (kernel_size - 1) // 2:
-            raise NotImplementedError()
+        assert padding == (kernel_size - 1) // 2
 
-        group_name = 'E2'
-        group = importlib.import_module('src.models.attgconv.group.' + group_name)
+        # determine if we downsample by pooling
+        self.really_equivariant = (stride != 1)
+        self.pool = _POOL_Rn if self.really_equivariant else None
 
-        e2_layers = attgconv.layers(group)
-        self.h_grid = e2_layers.H.grid_global(8)
+        # BatchNorms
+        self.bn1 = nn.BatchNorm3d(in_channels,  eps=_EPS)
+        self.bn2 = nn.BatchNorm3d(out_channels, eps=_EPS)
 
-        eps = 2e-5
-
-        if stride != 1:
-            self.really_equivariant = True
-            self.pooling = e2_layers.max_pooling_Rn
+        # 1×1 skip / identity mapping
+        if fiber_map == "id":
+            if in_channels != out_channels:
+                raise ValueError("Cannot use id fiber_map when in != out")
+            self.skip = nn.Identity()
+        elif fiber_map == "linear":
+            skip_stride = 1  # always do stride=1 on the conv, pooling handles downsample
+            self.skip = _layers.ConvGG(
+                N_in=in_channels,
+                N_out=out_channels,
+                kernel_size=1,
+                h_grid=_h_grid,
+                input_h_grid=_h_grid,
+                stride=skip_stride,
+                padding=0,
+                wscale=wscale,
+            )
         else:
-            self.really_equivariant = False
+            raise ValueError(f"Unknown fiber_map: {fiber_map}")
 
-        self.bn1 = nn.BatchNorm3d(num_features=in_channels, eps=eps)
-        self.c1 = e2_layers.ConvGG(N_in=in_channels , N_out=out_channels, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale)
+        # first 3×3 conv (always stride=1 at conv-level)
+        self.conv1 = _layers.ConvGG(
+            N_in=in_channels,
+            N_out=out_channels,
+            kernel_size=kernel_size,
+            h_grid=_h_grid,
+            input_h_grid=_h_grid,
+            stride=1,
+            padding=padding,
+            wscale=wscale,
+        )
+
+        # second 3×3 conv
+        self.conv2 = _layers.ConvGG(
+            N_in=out_channels,
+            N_out=out_channels,
+            kernel_size=kernel_size,
+            h_grid=_h_grid,
+            input_h_grid=_h_grid,
+            stride=1,
+            padding=padding,
+            wscale=wscale,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # conv path
+        h = F.relu(self.bn1(x))
+        h = self.conv1(h)
         if self.really_equivariant:
-            self.c1 = e2_layers.ConvGG(N_in=in_channels, N_out=out_channels, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=1, padding=padding, wscale=wscale)
+            h = self.pool(h, kernel_size=2, stride=2, padding=0)
 
-        self.bn2 = nn.BatchNorm3d(num_features=out_channels, eps=eps)
-        self.c2 = e2_layers.ConvGG(N_in=out_channels, N_out=out_channels, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=1     , padding=padding, wscale=wscale)
+        h = F.relu(self.bn2(h))
+        h = self.conv2(h)
 
-        if fiber_map == 'id':
-            if not in_channels == out_channels:
-                raise ValueError('fiber_map cannot be identity when channel dimension is changed.')
-            self.fiber_map = nn.Sequential()
-        elif fiber_map == 'zero_pad':
-            raise NotImplementedError()
-        elif fiber_map == 'linear':
-            self.fiber_map = e2_layers.ConvGG(N_in=in_channels, N_out=out_channels, kernel_size=1, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=0, wscale=wscale)
-            if self.really_equivariant:
-                self.fiber_map = e2_layers.ConvGG(N_in=in_channels, N_out=out_channels, kernel_size=1, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=1, padding=0, wscale=wscale)
-        else:
-            raise ValueError('Unknown fiber_map: ' + str(type))
-
-    def forward(self, x):
-        h = self.c1(torch.relu(self.bn1(x)))
+        # skip path
+        skip = self.skip(x)
         if self.really_equivariant:
-            h = self.pooling(h, kernel_size=2, stride=2, padding=0)
-        h = self.c2(torch.relu(self.bn2(h)))
-        hx = self.fiber_map(x)
-        if self.really_equivariant:
-            hx = self.pooling(hx, kernel_size=2, stride=2, padding=0)
-        return hx + h
+            skip = self.pool(skip, kernel_size=2, stride=2, padding=0)
+
+        return skip + h
 
 
+# —————————————————————————————————————————————————————————————
+# Full ResNet‐style network
+# —————————————————————————————————————————————————————————————
 class P4MResNet(nn.Module):
     def __init__(self, num_blocks=7, nc32=11, nc16=23, nc8=45):
+        super().__init__()
 
-        super(P4MResNet, self).__init__()
+        # first “ConvRnG” layer
+        self.c1 = _layers.ConvRnG(
+            N_in=3,
+            N_out=nc32,
+            kernel_size=_KSIZE,
+            h_grid=_h_grid,
+            stride=1,
+            padding=_PADDING,
+            wscale=_WSCALE,
+        )
 
-        group_name = 'E2'
-        group = importlib.import_module('src.models.attgconv.group.' + group_name)
-        e2_layers = attgconv.layers(group)
+        # three stages of residual blocks
+        self.stage32 = self._make_stage(nc32, nc32, num_blocks, downsample=False)
+        self.stage16 = self._make_stage(nc32, nc16, num_blocks, downsample=True)
+        self.stage8  = self._make_stage(nc16, nc8,  num_blocks, downsample=True)
 
-        self.h_grid = e2_layers.H.grid_global(8)
+        # final batchnorm + 1×1 conv
+        self.bn_out = nn.BatchNorm3d(nc8, eps=_EPS)
+        self.c_out  = _layers.ConvGG(
+            N_in=nc8,
+            N_out=10,
+            kernel_size=1,
+            h_grid=_h_grid,
+            input_h_grid=_h_grid,
+            stride=1,
+            padding=0,
+            wscale=_WSCALE,
+        )
 
-        stride = 1
-        padding = 1
-        kernel_size = 3
-        eps = 2e-5
+        self.avg_pool = _AVG_Rn
 
-        wscale = sqrt(2.)
+    def _make_stage(self, in_ch, out_ch, n_blocks, downsample: bool):
+        blocks = []
+        for i in range(n_blocks):
+            stride    = 2 if downsample and i == 0 else 1
+            fiber_map = "linear" if downsample and i == 0 else "id"
+            nc_in     = in_ch if i == 0 else out_ch
+            blocks.append(
+                P4MResBlock2D(
+                    in_channels=nc_in,
+                    out_channels=out_ch,
+                    kernel_size=_KSIZE,
+                    fiber_map=fiber_map,
+                    stride=stride,
+                    padding=_PADDING,
+                    wscale=_WSCALE,
+                )
+            )
+        return nn.Sequential(*blocks)
 
-        self.avg_pooling = e2_layers.average_pooling_Rn
-
-        self.c1 = e2_layers.ConvRnG(N_in=3, N_out=nc32, kernel_size=kernel_size, h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale)
-
-        layers_nc32 = []
-        for i in range(num_blocks):
-            layers_nc32.append(P4MResBlock2D(in_channels=nc32, out_channels=nc32, kernel_size=kernel_size, fiber_map='id', stride=stride, padding=padding, wscale=wscale))
-        self.layers_nc32 = nn.Sequential(*layers_nc32)
-
-        layers_nc16 = []
-        for i in range(num_blocks):
-            stride_block = 1 if i > 0 else 2
-            fiber_map = 'id' if i > 0 else 'linear'
-            nc_in = nc16 if i > 0 else nc32
-            layers_nc16.append(P4MResBlock2D(in_channels=nc_in, out_channels=nc16, kernel_size=kernel_size, fiber_map=fiber_map, stride=stride_block, padding=padding, wscale=wscale))
-        self.layers_nc16 = nn.Sequential(*layers_nc16)
-
-        layers_nc8 = []
-        for i in range(num_blocks):
-            stride_block = 1 if i > 0 else 2
-            fiber_map = 'id' if i > 0 else 'linear'
-            nc_in = nc8 if i > 0 else nc16
-            layers_nc8.append(P4MResBlock2D(in_channels=nc_in, out_channels=nc8, kernel_size=kernel_size, fiber_map=fiber_map, stride=stride_block, padding=padding,  wscale=wscale))
-        self.layers_nc8 = nn.Sequential(*layers_nc8)
-
-        self.bn_out = nn.BatchNorm3d(num_features=nc8, eps=eps)
-        self.c_out = e2_layers.ConvGG(N_in=nc8, N_out=10, kernel_size=1, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=1, padding=0, wscale=wscale)
-
-    def forward(self, x):
-        h = x
-        h = self.c1(h)
-        h = self.layers_nc32(h)
-        h = self.layers_nc16(h)
-        h = self.layers_nc8(h)
-        h = self.bn_out(h)
-        h = torch.relu(h)
-        h = self.avg_pooling(h, kernel_size=h.shape[-1], stride=1, padding=0) # TODO check!
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.c1(x)
+        h = self.stage32(h)
+        h = self.stage16(h)
+        h = self.stage8(h)
+        h = F.relu(self.bn_out(h))
+        h = self.avg_pool(h, kernel_size=h.shape[-1], stride=1, padding=0)
         h = self.c_out(h)
-        h = h.mean(dim=2)
-        h = h.view(h.size(0), 10)
-        return h
-
-
+        # collapse the fiber‐dimension
+        return h.mean(dim=2).view(h.size(0), 10)

@@ -4,9 +4,7 @@ import functools
 import importlib
 
 from src.models.p4_allcnn import P4AllCNNC
-from src.models.p4m_allcnn import P4MAllCNNC
 import src.models.attgconv as attgconv
-from src.models.attgconv.group.SE2 import H
 from src.models.attgconv.attention_layers import fChannelAttention as ch_RnG
 from src.models.attgconv.attention_layers import fChannelAttentionGG
 from src.models.attgconv.attention_layers import fSpatialAttention
@@ -17,91 +15,71 @@ class fA_P4AllCNNC(P4AllCNNC):
     def __init__(self):
         super(fA_P4AllCNNC, self).__init__()
 
+        # --- Configuration ---
+        self.group_name = 'SE2'
+        self.group = importlib.import_module(f'src.models.attgconv.group.{self.group_name}')
+        self.layers = attgconv.layers(self.group)
+        self.n_grid = 4
+        self.h_grid = self.layers.H.grid_global(self.n_grid)
 
-        group_name = 'SE2'
-        group = importlib.import_module('src.models.attgconv.group.' + group_name)
-        se2_layers = attgconv.layers(importlib.import_module('src.models.attgconv.group.SE2'))
+        # Hyperparameters
+        self.kernel_size = 3
+        self.padding = 1
+        self.stride = 1
+        self.N_channels = 48
+        self.N_channels_2 = self.N_channels * 2
+        self.ch_ratio = 16
+        self.sp_kernel_size = 7
+        self.sp_padding = self.sp_kernel_size // 2
+        self.eps = 2e-5
+        self.wscale = 0.035
+        self.p = 0.5
+        self.p_init = 0.2
 
-        n_grid = 4
-        h_grid = se2_layers.H.grid_global(n_grid)
-        p_init = 0.2
-        p = 0.5
-        stride = 1
-        padding = 1
-        kernel_size = 3
-        N_channels = 48
-        N_channels_2 = N_channels * 2
-        eps = 2e-5
-        wscale = 0.035
-        ch_ratio = 16
-        sp_kernel_size = 7
-        sp_padding = (sp_kernel_size // 2)
+        # --- Attention Factories ---
+        self.ch_GG = functools.partial(fChannelAttentionGG, N_h_in=self.n_grid)
+        self.sp_RnG = functools.partial(fSpatialAttention, group=self.group, kernel_size=self.sp_kernel_size, h_grid=self.h_grid, wscale=self.wscale)
+        self.sp_GG = functools.partial(fSpatialAttentionGG, group=self.group, input_h_grid=self.h_grid, wscale=self.wscale)
 
-        self.group_name = group_name
-        self.group = group
-        self.layers = se2_layers
-        self.n_grid = n_grid
-        self.h_grid = h_grid
-        self.p = p
-        self.stride = stride
-        self.padding = padding
-        self.kernel_size = kernel_size
-        self.N_channels = N_channels
-        self.eps = eps
-        self.ch_ratio = ch_ratio
-        self.sp_kernel_size = sp_kernel_size
-        self.sp_dilation = sp_padding
+        # --- Network Layers ---
+        self._build_layers()
 
-        ch_GG = functools.partial(fChannelAttentionGG, N_h_in=n_grid)
-        sp_RnG = functools.partial(fSpatialAttention, wscale=wscale)
-        sp_GG = functools.partial(fSpatialAttentionGG, group=group, input_h_grid=self.h_grid, wscale=wscale)
+    def _build_layers(self):
+        self.c1 = self.layers.fAttConvRnG(
+            N_in=3, N_out=self.N_channels, kernel_size=self.kernel_size, h_grid=self.h_grid,
+            stride=self.stride, padding=self.padding, wscale=self.wscale,
+            channel_attention=ch_RnG(N_in=3, ratio=1),
+            spatial_attention=self.sp_RnG()
+        )
 
-        self.c1 = se2_layers.fAttConvRnG(N_in=3          , N_out=N_channels  , kernel_size=kernel_size, h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                        channel_attention=ch_RnG(N_in=3        , ratio=1),
-                                        spatial_attention=sp_RnG(group=group, kernel_size=sp_kernel_size, h_grid=self.h_grid)
-                                        )
-        self.c2 = se2_layers.fAttConvGG(N_in=N_channels  , N_out=N_channels  , kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                       channel_attention=ch_GG(N_in=N_channels  , ratio=ch_ratio),
-                                       spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                       )
-        self.c3 = se2_layers.fAttConvGG(N_in=N_channels, N_out=N_channels, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                            channel_attention=ch_GG(N_in=N_channels, ratio=ch_ratio),
-                                            spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                            )
-        self.c4 = se2_layers.fAttConvGG(N_in=N_channels  , N_out=N_channels_2, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                       channel_attention=ch_GG(N_in=N_channels  , ratio=ch_ratio),
-                                       spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                       )
-        self.c5 = se2_layers.fAttConvGG(N_in=N_channels_2, N_out=N_channels_2, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                       channel_attention=ch_GG(N_in=N_channels_2, ratio=ch_ratio),
-                                       spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                       )
-        self.c6 = se2_layers.fAttConvGG(N_in=N_channels_2, N_out=N_channels_2, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                            channel_attention=ch_GG(N_in=N_channels_2, ratio=ch_ratio),
-                                            spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                            )
-        self.c7 = se2_layers.fAttConvGG(N_in=N_channels_2, N_out=N_channels_2, kernel_size=kernel_size, h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=padding, wscale=wscale,
-                                       channel_attention=ch_GG(N_in=N_channels_2, ratio=ch_ratio),
-                                       spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                       )
-        self.c8 = se2_layers.fAttConvGG(N_in=N_channels_2, N_out=N_channels_2, kernel_size=1          , h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=0      , wscale=wscale,
-                                       channel_attention=ch_GG(N_in=N_channels_2, ratio=ch_ratio),
-                                       spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                       )
-        self.c9 = se2_layers.fAttConvGG(N_in=N_channels_2, N_out=10          , kernel_size=1          , h_grid=self.h_grid, input_h_grid=self.h_grid, stride=stride, padding=0      , wscale=wscale,
-                                       channel_attention=ch_GG(N_in=N_channels_2, ratio=ch_ratio),
-                                       spatial_attention=sp_GG(kernel_size=sp_kernel_size)
-                                       )
+        def convGG(i, o, ks=3, pad=None):
+            return self.layers.fAttConvGG(
+                N_in=i, N_out=o, kernel_size=ks,
+                h_grid=self.h_grid, input_h_grid=self.h_grid,
+                stride=self.stride, padding=self.padding if pad is None else pad, wscale=self.wscale,
+                channel_attention=self.ch_GG(N_in=i, ratio=self.ch_ratio),
+                spatial_attention=self.sp_GG(kernel_size=self.sp_kernel_size)
+            )
 
-        self.dp_init = nn.Dropout(p_init)
-        self.dp = nn.Dropout(p)
+        self.c2 = convGG(self.N_channels, self.N_channels)
+        self.c3 = convGG(self.N_channels, self.N_channels)
+        self.c4 = convGG(self.N_channels, self.N_channels_2)
+        self.c5 = convGG(self.N_channels_2, self.N_channels_2)
+        self.c6 = convGG(self.N_channels_2, self.N_channels_2)
+        self.c7 = convGG(self.N_channels_2, self.N_channels_2)
+        self.c8 = convGG(self.N_channels_2, self.N_channels_2, ks=1, pad=0)
+        self.c9 = convGG(self.N_channels_2, 10, ks=1, pad=0)
 
-        self.bn1 = nn.BatchNorm3d(num_features=N_channels  , eps=eps)
-        self.bn2 = nn.BatchNorm3d(num_features=N_channels  , eps=eps)
-        self.bn3 = nn.BatchNorm3d(num_features=N_channels  , eps=eps)
-        self.bn4 = nn.BatchNorm3d(num_features=N_channels_2, eps=eps)
-        self.bn5 = nn.BatchNorm3d(num_features=N_channels_2, eps=eps)
-        self.bn6 = nn.BatchNorm3d(num_features=N_channels_2, eps=eps)
-        self.bn7 = nn.BatchNorm3d(num_features=N_channels_2, eps=eps)
-        self.bn8 = nn.BatchNorm3d(num_features=N_channels_2, eps=eps)
-        self.bn9 = nn.BatchNorm3d(num_features=10, eps=eps)
+        self.dp_init = nn.Dropout(self.p_init)
+        self.dp = nn.Dropout(self.p)
+
+        # BatchNorm layers
+        self.bn1 = nn.BatchNorm3d(self.N_channels, eps=self.eps)
+        self.bn2 = nn.BatchNorm3d(self.N_channels, eps=self.eps)
+        self.bn3 = nn.BatchNorm3d(self.N_channels, eps=self.eps)
+        self.bn4 = nn.BatchNorm3d(self.N_channels_2, eps=self.eps)
+        self.bn5 = nn.BatchNorm3d(self.N_channels_2, eps=self.eps)
+        self.bn6 = nn.BatchNorm3d(self.N_channels_2, eps=self.eps)
+        self.bn7 = nn.BatchNorm3d(self.N_channels_2, eps=self.eps)
+        self.bn8 = nn.BatchNorm3d(self.N_channels_2, eps=self.eps)
+        self.bn9 = nn.BatchNorm3d(10, eps=self.eps)
