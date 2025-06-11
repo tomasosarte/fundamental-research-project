@@ -3,6 +3,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tqdm import tqdm
 
+torch.set_float32_matmul_precision("medium")
+
 class Trainer:
 
     def __init__(self,
@@ -17,11 +19,9 @@ class Trainer:
         self.criterions = criterions
         self.optimizers = optimizers
         self.schedulers = schedulers
-        self.writers = [
-            SummaryWriter(log_dir=f"{log_dir}/{model_name}")
-            for model_name in models.keys()
-        ]
-        torch.backends.cudnn.benchmark = True
+
+        self.writers = [SummaryWriter(log_dir=f"{log_dir}/{name}")
+                        for name in models.keys()]
 
         # Device setup
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,6 +29,7 @@ class Trainer:
         if self.device.type == 'cuda':
             print(f"Current GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}")
             torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
         
     def train(self,
         num_epochs: int = 350,
@@ -36,10 +37,11 @@ class Trainer:
         val_loader: torch.utils.data.DataLoader = None,
         ) -> None:
 
-        scaler = torch.amp.GradScaler("cuda", enabled=self.device.type == "cuda")
+        scaler = torch.amp.GradScaler(enabled=self.device.type == "cuda")
 
-        i = 0
-        for model_name, model in self.models.items():
+        for (model_name, model), optimizer, criterion, scheduler, writer in zip(
+            self.models.items(), self.optimizers, self.criterions, self.schedulers, self.writers
+        ):
             print(f"Training model : {model_name}")
 
             model.to(self.device)
@@ -52,16 +54,16 @@ class Trainer:
                 total_loss, correct, total = 0, 0, 0
 
                 for inputs, targets in train_loader:
-
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    self.optimizers[i].zero_grad()
-                    with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
+                    inputs = inputs.to(self.device, non_blocking=True)
+                    targets = targets.to(self.device, non_blocking=True)
+                    optimizer.zero_grad()
+                    with torch.autocast(device_type=self.device.type, enabled=self.device.type == "cuda"):
                         outputs = model(inputs)
-                        loss = self.criterions[i](outputs, targets)
+                        loss = criterion(outputs, targets)
                     scaler.scale(loss).backward()
-                    scaler.unscale_(self.optimizers[i])
+                    scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                    scaler.step(self.optimizers[i])
+                    scaler.step(optimizer)
                     scaler.update()
                     total_loss += loss.item() * inputs.size(0)
                     _, predicted = outputs.max(1)
@@ -71,20 +73,21 @@ class Trainer:
 
                 train_acc = correct / total
                 train_loss = total_loss / total
-                self.writers[i].add_scalar('Train/Loss', train_loss, epoch)
-                self.writers[i].add_scalar('Train/Accuracy', train_acc, epoch)
+                writer.add_scalar('Train/Loss', train_loss, epoch)
+                writer.add_scalar('Train/Accuracy', train_acc, epoch)
 
                 model.eval()
 
                 val_loss, val_correct, val_total = 0, 0, 0
                 with torch.no_grad():
                     for inputs, targets in val_loader:
-                        inputs, targets = inputs.to(self.device), targets.to(self.device)
-                        with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
+                        inputs = inputs.to(self.device, non_blocking=True)
+                        targets = targets.to(self.device, non_blocking=True)
+                        with torch.autocast(device_type=self.device.type, enabled=self.device.type == "cuda"):
                             outputs = model(inputs)
-                            loss = self.criterions[i](outputs, targets)
+                            loss = criterion(outputs, targets)
                         if torch.isnan(loss):
-                            print(f"[NaN Detected] Model: {list(self.models.keys())[i]}, Epoch: {epoch}")
+                            print(f"[NaN Detected] Model: {model_name}, Epoch: {epoch}")
                             continue
                         val_loss += loss.item() * inputs.size(0)
                         _, predicted = outputs.max(1)
@@ -95,15 +98,15 @@ class Trainer:
                     val_loss = val_loss / val_total
                 else:
                     print(
-                        f"No valid validation samples for model {list(self.models.keys())[i]} at epoch {epoch}."
+                        f"No valid validation samples for model {model_name} at epoch {epoch}."
                     )
                     val_acc = float('nan')
                     val_loss = float('nan')
 
-                self.writers[i].add_scalar('Val/Loss', val_loss, epoch)
-                self.writers[i].add_scalar('Val/Accuracy', val_acc, epoch)
+                writer.add_scalar('Val/Loss', val_loss, epoch)
+                writer.add_scalar('Val/Accuracy', val_acc, epoch)
 
-                self.schedulers[i].step()
+                scheduler.step()
                 epoch_bar.set_postfix({
                     "Train Acc": f"{train_acc:.4f}",
                     "Val Acc": f"{val_acc:.4f}",
@@ -112,36 +115,32 @@ class Trainer:
                 })
 
             # Clean gpu if using it:
-            if self.device ==  "cuda":
+            if self.device.type == "cuda":
                 torch.cuda.empty_cache()
-            i += 1
 
     def evaluate(
             self,
             test_loader: torch.utils.data.DataLoader,
         ) -> dict[str, float]:
 
-        i = 0
         test_accuracies = {}
-        for model_name, model in self.models.items():
+        for (model_name, model), writer in zip(self.models.items(), self.writers):
 
             model.to(self.device)
             model.eval()
             correct, total = 0, 0
             with torch.no_grad():
                 for inputs, targets in test_loader:
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
+                    inputs = inputs.to(self.device, non_blocking=True)
+                    targets = targets.to(self.device, non_blocking=True)
+                    with torch.autocast(device_type=self.device.type, enabled=self.device.type == "cuda"):
                         outputs = model(inputs)
                     _, predicted = outputs.max(1)
                     total += targets.size(0)
                     correct += predicted.eq(targets).sum().item()
             test_acc = correct / total
-            self.writers[i].add_scalar('Test/Accuracy', test_acc)
-            self.writers[i].close()
-
-            i += 1
-
+            writer.add_scalar('Test/Accuracy', test_acc)
+            writer.close()
             test_accuracies[model_name] = test_acc
 
         return test_accuracies
