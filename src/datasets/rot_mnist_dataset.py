@@ -2,6 +2,7 @@
 import torch
 import torch.optim
 import torch.utils.data
+from torch.utils.data import random_split, DataLoader, TensorDataset
 
 # built-in
 import numpy as np
@@ -23,28 +24,33 @@ def preprocess_mnist_data(train_data, test_data, train_labels, test_labels):
     return train_data, test_data, train_labels, test_labels
 
 
-def get_dataset(batch_size, num_workers):
+def get_dataset(batch_size, num_workers, val_split=0.1):
     # Load dataset
-    train_set = np.load('data/train_all.npz')     # TODO: More flexible
-    test_set = np.load('data/test.npz')
-    train_data = train_set['data']
-    train_labels = train_set['labels']
-    test_data = test_set['data']
-    test_labels = test_set['labels']
+    train_set = np.load('../data/train_all.npz')  # adjust path as needed
+    test_set = np.load('../data/test.npz')
 
-    # Preprocess dataset
+    train_data, train_labels = train_set['data'], train_set['labels']
+    test_data, test_labels = test_set['data'], test_set['labels']
+
     train_data, test_data, train_labels, test_labels = preprocess_mnist_data(
-        train_data, test_data, train_labels, test_labels)
-    test_data = torch.from_numpy(test_data)
-    test_lbls = torch.from_numpy(test_labels)
-    train_data = torch.from_numpy(train_data)
-    train_lbls = torch.from_numpy(train_labels)
+        train_data, test_data, train_labels, test_labels
+    )
 
-    # Create TensorDataset and DataLoader objects
-    test_dataset = torch.utils.data.TensorDataset(test_data.type(torch.FloatTensor), test_lbls.type(torch.LongTensor))
-    test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, num_workers=4, batch_size=batch_size)
-    train_dataset = torch.utils.data.TensorDataset(train_data.type(torch.FloatTensor), train_lbls.type(torch.LongTensor))
-    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-                   'validation': test_loader}
+    train_tensor = torch.from_numpy(train_data).type(torch.FloatTensor)
+    train_labels_tensor = torch.from_numpy(train_labels).type(torch.LongTensor)
+    test_tensor = torch.from_numpy(test_data).type(torch.FloatTensor)
+    test_labels_tensor = torch.from_numpy(test_labels).type(torch.LongTensor)
 
-    return dataloaders, test_loader
+    full_train_dataset = TensorDataset(train_tensor, train_labels_tensor)
+
+    val_size = int(len(full_train_dataset) * val_split)
+    train_size = len(full_train_dataset) - val_size
+    train_dataset, val_dataset = random_split(full_train_dataset, [train_size, val_size])
+
+    test_dataset = TensorDataset(test_tensor, test_labels_tensor)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader
