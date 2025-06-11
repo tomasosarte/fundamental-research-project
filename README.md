@@ -26,14 +26,17 @@ The dataset can be downloaded from: https://drive.google.com/file/d/1PcPdBOyImiv
 
 4. ## Using Docker
 
-Build the image:
+Build the image (add `--build-arg USE_CUDA=true` if you want to force
+installation of the CUDA-enabled PyTorch packages):
 
 ```bash
 docker build -t fundamental-research .
+# Force CUDA build
+# docker build --build-arg USE_CUDA=true -t fundamental-research .
 ```
 
-Run Jupyter Lab:
+Run Jupyter Lab (use `--gpus all` to expose your GPU to the container):
 
 ```bash
-docker run -p 8888:8888 fundamental-research
+docker run --gpus all -p 8888:8888 fundamental-research
 ```
