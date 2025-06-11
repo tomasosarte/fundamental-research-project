@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Install basic utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -10,13 +10,17 @@ WORKDIR /app
 COPY requirements.txt .
 # Install PyTorch with or without CUDA depending on environment
 RUN if command -v nvidia-smi >/dev/null 2>&1; then \
-        echo "CUDA GPU detected. Installing PyTorch with CUDA 12.4..." && \
-        pip install --no-cache-dir torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124 ; \
+      echo "CUDA GPU detected. Installing latest PyTorch for CUDA 12.4…" && \
+      pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cu124 \
+        torch torchvision torchaudio ; \
     else \
-        echo "No CUDA GPU detected. Installing CPU-only PyTorch..." && \
-        pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu ; \
-    fi && \
-    pip install --no-cache-dir -r requirements.txt --no-deps
+      echo "No CUDA GPU detected. Installing CPU-only PyTorch…" && \
+      pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch torchvision torchaudio ; \
+    fi \
+ && pip install --no-cache-dir -r requirements.txt --no-deps
 
 COPY . .
 
