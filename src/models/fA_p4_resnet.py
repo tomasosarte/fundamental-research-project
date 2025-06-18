@@ -76,8 +76,8 @@ class fA_P4MResNet(nn.Module):
             ))
         return nn.Sequential(*blocks)
 
-    def forward(self, x):
-        x = torch.flip(x, dims=[-1])
+    def forward(self, x: torch.Tensor):
+        x = x.flip(-1)
         h = self.c1(x)
         h = self.layers_nc32(h)
         h = self.layers_nc16(h)
@@ -140,7 +140,7 @@ class fA_P4MResBlock2D(nn.Module):
         else:
             raise ValueError(f'Unknown fiber_map: {fiber_map}')
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         h = self.c1(F.relu(self.bn1(x), inplace=True))
         if self.really_equivariant:
             h = self.pooling(h, kernel_size=2, stride=2, padding=0)
