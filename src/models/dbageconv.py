@@ -99,17 +99,17 @@ class DBAGEConvNet(nn.Module):
         super().__init__()
         self.n_ori = n_ori
 
-        self.c1 = DBAGEConv(3,   32, 3, padding=1, n_orientations=n_ori)
-        self.bn1 = nn.BatchNorm3d(32)
+        self.c1 = DBAGEConv(3, 128, 3, padding=1, n_orientations=n_ori)
+        self.bn1 = nn.BatchNorm3d(128)
 
-        self.c2 = DBAGEConv(32,  64, 3, padding=1, n_orientations=n_ori)
-        self.bn2 = nn.BatchNorm3d(64)
+        self.c2 = DBAGEConv(128, 256, 3, padding=1, n_orientations=n_ori)
+        self.bn2 = nn.BatchNorm3d(256)
 
-        self.c3 = DBAGEConv(64, 128, 3, padding=1, n_orientations=n_ori)
-        self.bn3 = nn.BatchNorm3d(128)
+        self.c3 = DBAGEConv(256, 512, 3, padding=1, n_orientations=n_ori)
+        self.bn3 = nn.BatchNorm3d(512)
 
         self.global_pool = nn.AdaptiveAvgPool3d(1)
-        self.fc = nn.Linear(128, n_classes)
+        self.fc = nn.Linear(512, n_classes)
 
     # ---------------------------------------------------------
 
