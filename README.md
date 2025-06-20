@@ -1,4 +1,4 @@
-# fundamental-research-project
+# DSAIT4205 Reproduction Project: Attentive Group Equivariant Convolutional Networks
 
 1. ## Create virtual environment ans activate it
 
