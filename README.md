@@ -7,22 +7,14 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-2. ##  Install requirements
+2. ## Install requirements
 
 ```
 make install
 ```
 
-3. ## Donwload datasets
-
-
-### PCAM
-```
-make download_pcam
-```
-
-### Rot-MNIST
-The dataset can be downloaded from: https://drive.google.com/file/d/1PcPdBOyImivBz3IMYopIizGvJOnfgXGD/view?usp=sharing
+3. ## Experiments
+Experiments are in Jupyter notebook in the `experiments` folder
 
 4. ## Using Docker
 
